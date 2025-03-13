@@ -69,17 +69,19 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden" style={{ width: '100vw', height: '100vh' }}>
-      {/* Responsive navbar */}
-      <nav className="bg-white shadow">
+      {/* Responsive navbar - sticky for better navigation */}
+      <nav className="bg-white shadow sticky top-0 z-10">
         <div className="w-full px-4 sm:px-6">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate max-w-xs">Career Guidance Platform</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate max-w-xs">
+                Career Guidance Platform
+              </h1>
             </div>
             <div className="flex items-center">
               <button
                 onClick={logout}
-                className="px-3 py-1 sm:px-4 sm:py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
               >
                 Logout
               </button>
@@ -88,10 +90,10 @@ const Dashboard: React.FC = () => {
         </div>
       </nav>
 
-      {/* Main content with better padding for small screens */}
+      {/* Main content with optimized padding */}
       <main className="w-full px-4 py-4 sm:py-6">
         <div className="mb-4 sm:mb-8">
-          {/* Welcome card with better spacing for mobile */}
+          {/* Welcome card */}
           <div className="relative bg-gradient-to-r from-indigo-600 to-indigo-900 shadow-xl rounded-xl sm:rounded-2xl overflow-hidden">
             <div className="absolute inset-0 bg-[url('/images/pattern.png')] opacity-10" />
             <div className="relative p-4 sm:p-6 md:p-8">
@@ -142,7 +144,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Assessment status card with better mobile spacing */}
+        {/* Assessment status card */}
         <div className="bg-white shadow-xl rounded-xl sm:rounded-2xl overflow-hidden p-4 sm:p-6 md:p-8">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <h3 className="text-lg sm:text-xl font-bold text-gray-900">Assessment Status</h3>
