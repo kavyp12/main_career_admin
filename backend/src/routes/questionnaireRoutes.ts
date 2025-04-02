@@ -1,3 +1,4 @@
+// D:\new backup latest\career-guide - Copy\backend\src\routes\questionnaireRoutes.ts
 import express, { Request, Response } from 'express';
 import { verifyToken } from '../middleware/authMiddleware';
 import Questionnaire from '../models/QuestionnaireModel';
@@ -36,10 +37,34 @@ router.post('/submit-answers', verifyToken, asyncHandler(async (req: Authenticat
 
     await User.findByIdAndUpdate(userId, { status: 'Analyzing' });
 
+    // Transform answers into a more usable format
     const transformedAnswers = req.body.answers.reduce((acc: Record<string, any>, curr: any) => {
-      acc[`question${curr.questionId}`] = curr.answer;
+      acc[curr.questionId] = curr.answer;
       return acc;
     }, {});
+
+    // Get skill scores from the AI service before saving the questionnaire
+    const studentInfo = {
+      studentName: `${user.firstName} ${user.lastName}`,
+      age: user.age || '',
+      academicInfo: `${user.standard} Grade`,
+      interests: user.interests || '',
+      answers: transformedAnswers
+    };
+
+    console.log('Sending to AI service for skill assessment:', studentInfo); // Debug log
+
+    let skillScores = {};
+    try {
+      // Get skill scores from the assessment service
+      const scoreResponse = await axios.post('https://p.enhc.tech/api/calculate-scores', { answers: transformedAnswers });
+      skillScores = scoreResponse.data.trait_scores;
+      console.log('Received skill scores:', skillScores);
+    } catch (scoreError) {
+      console.error('Failed to get skill scores:', scoreError);
+      // Continue with empty skill scores if the service fails
+      skillScores = {};
+    }
 
     const newQuestionnaire = new Questionnaire({
       userId: userId,
@@ -47,64 +72,68 @@ router.post('/submit-answers', verifyToken, asyncHandler(async (req: Authenticat
       age: user.age || '',
       academicInfo: `${user.standard} Grade`,
       interests: user.interests || '',
-      answers: transformedAnswers
+      answers: transformedAnswers,
+      skillScores: skillScores
     });
+
     await newQuestionnaire.save();
 
-    const aiServiceData = {
-      studentName: newQuestionnaire.studentName,
-      age: newQuestionnaire.age,
-      academicInfo: newQuestionnaire.academicInfo,
-      interests: newQuestionnaire.interests,
-      answers: transformedAnswers
-    };
+    try {
+      const aiResponse = await axios.post('https://p.enhc.tech/api/submit-assessment', studentInfo);
+      if (!aiResponse.data.task_id) {
+        throw new Error('No task ID received from AI service');
+      }
 
-    const aiResponse = await axios.post('https://p.enhc.tech/api/submit-assessment', aiServiceData);
-    if (!aiResponse.data.task_id) {
-      throw new Error('No task ID received from AI service');
-    }
+      // Start polling the task status
+      const pollStatus = async (taskId: string) => {
+        const maxPollAttempts = 120;
+        let attempts = 0;
 
-    // Start polling the task status
-    const pollStatus = async (taskId: string) => {
-      const maxPollAttempts = 120; // 10 minutes with 5-second intervals
-      let attempts = 0;
+        const checkStatus = async () => {
+          try {
+            const statusResponse = await axios.get(`https://p.enhc.tech/api/task-status/${taskId}`);
+            const { status, report_url, error } = statusResponse.data;
 
-      const checkStatus = async () => {
-        try {
-          const statusResponse = await axios.get(`https://p.enhc.tech/api/task-status/${taskId}`);
-          const { status, report_url, error } = statusResponse.data;
-
-          if (status === 'completed' && report_url) {
-            const reportPath = report_url.split('/').pop();
-            await User.findByIdAndUpdate(userId, {
-              status: 'Report Generated',
-              reportPath: reportPath
-            });
-          } else if (status === 'error') {
-            console.error('Task failed:', error);
-            await User.findByIdAndUpdate(userId, { status: 'Error' });
-          } else if (attempts < maxPollAttempts) {
-            attempts++;
-            setTimeout(checkStatus, 5000); // Poll every 5 seconds
-          } else {
-            console.error('Polling timed out');
-            await User.findByIdAndUpdate(userId, { status: 'Error' });
+            if (status === 'completed' && report_url) {
+              const reportPath = report_url.split('/').pop();
+              await User.findByIdAndUpdate(userId, {
+                status: 'Report Generated',
+                reportPath: reportPath
+              });
+            } else if (status === 'error') {
+              console.error('Task failed:', error);
+              await User.findByIdAndUpdate(userId, { status: 'Error' });
+            } else if (attempts < maxPollAttempts) {
+              attempts++;
+              setTimeout(checkStatus, 5000);
+            } else {
+              console.error('Polling timed out');
+              await User.findByIdAndUpdate(userId, { status: 'Error' });
+            }
+          } catch (err) {
+            console.error('Error polling task status:', err);
+            if (attempts < maxPollAttempts) {
+              attempts++;
+              setTimeout(checkStatus, 5000);
+            } else {
+              await User.findByIdAndUpdate(userId, { status: 'Error' });
+            }
           }
-        } catch (err) {
-          console.error('Error polling task status:', err);
-          if (attempts < maxPollAttempts) {
-            attempts++;
-            setTimeout(checkStatus, 5000);
-          } else {
-            await User.findByIdAndUpdate(userId, { status: 'Error' });
-          }
-        }
+        };
+        checkStatus();
       };
-      checkStatus();
-    };
 
-    pollStatus(aiResponse.data.task_id);
-    return res.status(202).json({ message: 'Report generation started' });
+      pollStatus(aiResponse.data.task_id);
+      return res.status(202).json({ message: 'Report generation started' });
+
+    } catch (aiError) {
+      console.error('AI Service Error:', aiError);
+      await User.findByIdAndUpdate(userId, { status: 'Error' });
+      return res.status(502).json({
+        message: 'AI Service unavailable',
+        error: aiError instanceof Error ? aiError.message : 'Unknown AI service error'
+      });
+    }
 
   } catch (error) {
     console.error('Submission error:', error);

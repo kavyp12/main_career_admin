@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
+import Questionnaire from '../models/QuestionnaireModel';
 import { verifyToken, AuthRequest } from '../middleware/authMiddleware';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -36,6 +37,17 @@ router.get('/students-test', asyncHandler(async (req: Request, res: Response) =>
   } catch (error) {
     console.error('Error fetching students:', error);
     res.status(500).json({ message: 'Error fetching student data' });
+  }
+}));
+
+// New endpoint to fetch questionnaire data
+router.get('/questionnaire-data', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const questionnaireData = await Questionnaire.find({}).populate('userId', 'firstName lastName email schoolName standard age status');
+    res.json(questionnaireData);
+  } catch (error) {
+    console.error('Error fetching questionnaire data:', error);
+    res.status(500).json({ message: 'Error fetching questionnaire data' });
   }
 }));
 

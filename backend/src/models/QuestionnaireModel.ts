@@ -1,4 +1,4 @@
-// E:\career-guide\backend\src\models\QuestionnaireModel.ts
+// D:\new backup latest\career-guide - Copy\backend\src\models\QuestionnaireModel.ts
 import mongoose from 'mongoose';
 
 const QuestionnaireSchema = new mongoose.Schema({
@@ -26,6 +26,10 @@ const QuestionnaireSchema = new mongoose.Schema({
   answers: {
     type: mongoose.Schema.Types.Mixed,
     required: true
+  },
+  skillScores: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   }
 }, { 
   timestamps: true 

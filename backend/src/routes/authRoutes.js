@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const User_1 = __importDefault(require("../models/User"));
+const QuestionnaireModel_1 = __importDefault(require("../models/QuestionnaireModel"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const child_process_1 = require("child_process");
 const path_1 = __importDefault(require("path"));
@@ -38,6 +39,17 @@ router.get('/students-test', asyncHandler(async (req, res) => {
     catch (error) {
         console.error('Error fetching students:', error);
         res.status(500).json({ message: 'Error fetching student data' });
+    }
+}));
+// New endpoint to fetch questionnaire data
+router.get('/questionnaire-data', asyncHandler(async (req, res) => {
+    try {
+        const questionnaireData = await QuestionnaireModel_1.default.find({}).populate('userId', 'firstName lastName email schoolName standard age status');
+        res.json(questionnaireData);
+    }
+    catch (error) {
+        console.error('Error fetching questionnaire data:', error);
+        res.status(500).json({ message: 'Error fetching questionnaire data' });
     }
 }));
 // Download report endpoint
