@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import { ChevronDown, ChevronUp, BookOpen, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Student {
@@ -66,8 +66,9 @@ const StudentTable: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [activeTab, setActiveTab] = useState<Record<string, 'traits' | 'answers' | 'marks'>>({});
+  const [activeTab, setActiveTab] = useState<Record<string, 'traits' | 'answers' | 'marks' | 'jsonData'>>({});
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [copiedData, setCopiedData] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -130,13 +131,13 @@ const StudentTable: React.FC = () => {
     setExpandedRows(prev => {
       const newState = { ...prev, [studentId]: !prev[studentId] };
       if (newState[studentId] && !activeTab[studentId]) {
-        setActiveTab(prevTabs => ({ ...prevTabs, [studentId]: 'traits' }));
+        setActiveTab(prevTabs => ({ ...prevTabs, [studentId]: 'jsonData' }));
       }
       return newState;
     });
   };
 
-  const handleTabChange = (studentId: string, tab: 'traits' | 'answers' | 'marks') => {
+  const handleTabChange = (studentId: string, tab: 'traits' | 'answers' | 'marks' | 'jsonData') => {
     setActiveTab(prev => ({ ...prev, [studentId]: tab }));
   };
 
@@ -190,6 +191,85 @@ const StudentTable: React.FC = () => {
       </div>
     </motion.div>
   );
+
+  const renderJsonData = (questionnaire?: QuestionnaireData) => {
+    if (!questionnaire) return null;
+    
+    const jsonData = {
+      skillScores: questionnaire.skillScores || {},
+      answers: questionnaire.answers || {}
+    };
+    
+    const jsonString = JSON.stringify(jsonData, null, 2);
+    
+    const copyToClipboard = (text: string, dataType: string) => {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedData(dataType);
+        setTimeout(() => setCopiedData(null), 2000);
+      });
+    };
+    
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-xl shadow-inner">
+        <div className="flex justify-between items-center mb-4">
+          <h4 className="text-lg font-semibold text-indigo-700">JSON Data for Extraction</h4>
+          <motion.button
+            onClick={() => copyToClipboard(jsonString, 'all')}
+            className="flex items-center px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Copy className="h-4 w-4 mr-2" />
+            {copiedData === 'all' ? 'Copied!' : 'Copy All'}
+          </motion.button>
+        </div>
+        
+        <div className="bg-gray-800 text-white p-4 rounded-xl overflow-auto max-h-96">
+          <pre className="text-sm whitespace-pre-wrap">{jsonString}</pre>
+        </div>
+        
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {questionnaire.skillScores && (
+            <div className="bg-white p-6 rounded-xl shadow-md">
+              <div className="flex justify-between items-center mb-4">
+                <h5 className="text-md font-semibold text-indigo-700">Skill Scores Only</h5>
+                <motion.button
+                  onClick={() => copyToClipboard(JSON.stringify(questionnaire.skillScores, null, 2), 'skills')}
+                  className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  {copiedData === 'skills' ? 'Copied!' : 'Copy'}
+                </motion.button>
+              </div>
+              <div className="bg-gray-800 text-white p-3 rounded-lg overflow-auto max-h-40">
+                <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(questionnaire.skillScores, null, 2)}</pre>
+              </div>
+            </div>
+          )}
+          
+          <div className="bg-white p-6 rounded-xl shadow-md">
+            <div className="flex justify-between items-center mb-4">
+              <h5 className="text-md font-semibold text-indigo-700">Answers Only</h5>
+              <motion.button
+                onClick={() => copyToClipboard(JSON.stringify(questionnaire.answers, null, 2), 'answers')}
+                className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                {copiedData === 'answers' ? 'Copied!' : 'Copy'}
+              </motion.button>
+            </div>
+            <div className="bg-gray-800 text-white p-3 rounded-lg overflow-auto max-h-40">
+              <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(questionnaire.answers, null, 2)}</pre>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
 
   const renderMarks = (marks: MarksData) => (
     <motion.div 
@@ -302,7 +382,7 @@ const StudentTable: React.FC = () => {
             const questionnaire = getQuestionnaireForUser(student._id);
             const marksList = getMarksForUser(student._id);
             const isExpanded = expandedRows[student._id] || false;
-            const currentTab = activeTab[student._id] || 'traits';
+            const currentTab = activeTab[student._id] || 'jsonData';
             const hasData = questionnaire || marksList.length > 0;
 
             return (
@@ -386,7 +466,17 @@ const StudentTable: React.FC = () => {
                             )}
                           </div>
                           <div className="border-b border-gray-200 mb-6">
-                            <nav className="flex space-x-4" aria-label="Tabs">
+                            <nav className="flex space-x-4 flex-wrap" aria-label="Tabs">
+                              {questionnaire && (
+                                <motion.button
+                                  onClick={() => handleTabChange(student._id, 'jsonData')}
+                                  className={`px-4 py-2 font-semibold text-sm rounded-lg flex items-center ${currentTab === 'jsonData' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-indigo-600 bg-gray-100'}`}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                >
+                                  JSON Data
+                                </motion.button>
+                              )}
                               {questionnaire && questionnaire.skillScores && (
                                 <motion.button
                                   onClick={() => handleTabChange(student._id, 'traits')}
@@ -420,6 +510,7 @@ const StudentTable: React.FC = () => {
                               )}
                             </nav>
                           </div>
+                          {currentTab === 'jsonData' && questionnaire && renderJsonData(questionnaire)}
                           {currentTab === 'traits' && questionnaire && questionnaire.skillScores && renderSkillScores(questionnaire.skillScores)}
                           {currentTab === 'answers' && questionnaire && renderAnswers(questionnaire.answers)}
                           {currentTab === 'marks' && marksList.length > 0 && (
