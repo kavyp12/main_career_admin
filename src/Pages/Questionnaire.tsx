@@ -23,6 +23,7 @@ const Questionnaire: React.FC = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<QuestionResponse[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const mockQuestions: QuestionType[] = [
     {
@@ -629,12 +630,50 @@ const Questionnaire: React.FC = () => {
 
   useEffect(() => {
     setQuestions(mockQuestions);
+    
+    try {
+      // Try to get saved progress from localStorage
+      const savedProgress = localStorage.getItem('questionnaire_progress');
+      const savedAnswers = localStorage.getItem('questionnaire_answers');
+      
+      if (savedProgress && savedAnswers) {
+        const parsedProgress = parseInt(savedProgress, 10);
+        const parsedAnswers = JSON.parse(savedAnswers) as QuestionResponse[];
+        
+        // Validate the saved data
+        if (
+          !isNaN(parsedProgress) && 
+          parsedProgress >= 0 && 
+          parsedProgress < mockQuestions.length &&
+          Array.isArray(parsedAnswers) &&
+          parsedAnswers.length === mockQuestions.length
+        ) {
+          setCurrentQuestion(parsedProgress);
+          setAnswers(parsedAnswers);
+          setIsLoading(false);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading saved progress:', error);
+    }
+    
+    // If no valid saved progress, initialize with empty answers
     const initialAnswers = mockQuestions.map((q) => ({
       questionId: q.id,
       answer: q.type === 'checkbox' ? [] : '',
     }));
     setAnswers(initialAnswers);
+    setIsLoading(false);
   }, []);
+
+  // Save progress to localStorage whenever answers or currentQuestion changes
+  useEffect(() => {
+    if (!isLoading && questions.length > 0) {
+      localStorage.setItem('questionnaire_progress', currentQuestion.toString());
+      localStorage.setItem('questionnaire_answers', JSON.stringify(answers));
+    }
+  }, [currentQuestion, answers, isLoading, questions]);
 
   const handleRadioAnswer = (option: string) => {
     const newAnswers = [...answers];
@@ -685,54 +724,57 @@ const Questionnaire: React.FC = () => {
     }
   };
 
- // Updated submitAnswers function in Questionnaire.tsx
-const submitAnswers = async () => {
-  setIsSubmitting(true);
-  try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No authentication token found');
-      return;
+  const submitAnswers = async () => {
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No authentication token found');
+        return;
+      }
+
+      // Convert answers to the format expected by backend
+      const formattedAnswers = questions.map((q, index) => ({
+        questionId: q.id,
+        answer: answers[index].answer
+      }));
+
+      // Clear saved progress since we're submitting
+      localStorage.removeItem('questionnaire_progress');
+      localStorage.removeItem('questionnaire_answers');
+
+      // First, navigate to the report-generating page
+      navigate('/report-generating');
+      
+      // Submit answers to backend
+      const response = await fetch('/api/questionnaire/submit-answers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          answers: formattedAnswers,
+          userId: user?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to submit answers');
+      }
+
+      const data = await response.json();
+      console.log('Submission successful:', data);
+
+    } catch (error) {
+      console.error('Error submitting answers:', error);
+      // Fallback - navigate to dashboard even if submission fails
+      navigate('/dashboard');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Convert answers to the format expected by backend
-    const formattedAnswers = questions.map((q, index) => ({
-      questionId: q.id,
-      answer: answers[index].answer
-    }));
-
-    // First, navigate to the report-generating page
-    navigate('/report-generating');
-    
-    // Submit answers to backend
-    const response = await fetch('/api/questionnaire/submit-answers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        answers: formattedAnswers,
-        userId: user?.id,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to submit answers');
-    }
-
-    const data = await response.json();
-    console.log('Submission successful:', data);
-
-  } catch (error) {
-    console.error('Error submitting answers:', error);
-    // Fallback - navigate to dashboard even if submission fails
-    navigate('/dashboard');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const isOptionSelected = (option: string): boolean => {
     const currentAnswer = answers[currentQuestion]?.answer;
@@ -761,7 +803,7 @@ const submitAnswers = async () => {
     return answers[currentQuestion]?.answer as string || '';
   };
 
-  if (!questions.length) {
+  if (isLoading || !questions.length) {
     return (
       <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600" />
