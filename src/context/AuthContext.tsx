@@ -12,7 +12,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-  
 
   useEffect(() => {
     const verifyToken = async () => {
@@ -44,13 +43,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-  
+
       const data = await response.json();
-  
+
       if (!response.ok) {
         throw new Error(data.message || 'Login failed');
       }
-  
+
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       setToken(data.token);
@@ -86,8 +85,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    // Clear authentication data
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    // Clear any residual questionnaire data (defensive cleanup)
+    localStorage.removeItem('questionnaire_progress');
+    localStorage.removeItem('questionnaire_answers');
     setToken(null);
     setUser(null);
   };
@@ -131,7 +134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -139,4 +141,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 export default AuthProvider;

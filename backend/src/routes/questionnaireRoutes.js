@@ -3,7 +3,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// D:\new backup latest\career-guide - Copy\backend\src\routes\questionnaireRoutes.ts
 const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const QuestionnaireModel_1 = __importDefault(require("../models/QuestionnaireModel"));
@@ -16,6 +15,45 @@ const asyncHandler = (fn) => (req, res) => {
         res.status(500).json({ message: 'Internal server error', error: error.message });
     });
 };
+// Save progress
+router.post('/save-progress', authMiddleware_1.verifyToken, asyncHandler(async (req, res) => {
+    const userId = req.user?.userId;
+    const { currentQuestion, answers } = req.body;
+    if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized: No user ID found' });
+    }
+    try {
+        const user = await User_1.default.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        let questionnaire = await QuestionnaireModel_1.default.findOne({ userId });
+        if (!questionnaire) {
+            questionnaire = new QuestionnaireModel_1.default({
+                userId,
+                studentName: `${user.firstName} ${user.lastName}`,
+                age: user.age || '',
+                academicInfo: `${user.standard} Grade`,
+                interests: user.interests || '',
+                answers: {},
+                currentQuestion: 0,
+                completed: false
+            });
+        }
+        questionnaire.currentQuestion = currentQuestion;
+        questionnaire.answers = answers;
+        await questionnaire.save();
+        return res.status(200).json({ message: 'Progress saved' });
+    }
+    catch (error) {
+        console.error('Progress save error:', error);
+        return res.status(500).json({
+            message: 'Failed to save progress',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+// Submit answers
 router.post('/submit-answers', authMiddleware_1.verifyToken, asyncHandler(async (req, res) => {
     const userId = req.user?.userId;
     if (!userId) {
@@ -26,17 +64,20 @@ router.post('/submit-answers', authMiddleware_1.verifyToken, asyncHandler(async 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        const existingQuestionnaire = await QuestionnaireModel_1.default.findOne({ userId });
-        if (existingQuestionnaire) {
+        let questionnaire = await QuestionnaireModel_1.default.findOne({ userId });
+        if (!questionnaire) {
+            return res.status(400).json({ message: 'No questionnaire found' });
+        }
+        if (questionnaire.completed) {
             return res.status(400).json({ message: 'Questionnaire already submitted' });
         }
         await User_1.default.findByIdAndUpdate(userId, { status: 'Analyzing' });
-        // Transform answers into a more usable format
+        // Transform answers
         const transformedAnswers = req.body.answers.reduce((acc, curr) => {
             acc[curr.questionId] = curr.answer;
             return acc;
         }, {});
-        // Get skill scores from the AI service before saving the questionnaire
+        // Get skill scores
         const studentInfo = {
             studentName: `${user.firstName} ${user.lastName}`,
             age: user.age || '',
@@ -44,35 +85,27 @@ router.post('/submit-answers', authMiddleware_1.verifyToken, asyncHandler(async 
             interests: user.interests || '',
             answers: transformedAnswers
         };
-        console.log('Sending to AI service for skill assessment:', studentInfo); // Debug log
         let skillScores = {};
         try {
-            // Get skill scores from the assessment service
             const scoreResponse = await axios_1.default.post('https://p.enhc.tech/api/calculate-scores', { answers: transformedAnswers });
             skillScores = scoreResponse.data.trait_scores;
             console.log('Received skill scores:', skillScores);
         }
         catch (scoreError) {
             console.error('Failed to get skill scores:', scoreError);
-            // Continue with empty skill scores if the service fails
             skillScores = {};
         }
-        const newQuestionnaire = new QuestionnaireModel_1.default({
-            userId: userId,
-            studentName: `${user.firstName} ${user.lastName}`,
-            age: user.age || '',
-            academicInfo: `${user.standard} Grade`,
-            interests: user.interests || '',
-            answers: transformedAnswers,
-            skillScores: skillScores
-        });
-        await newQuestionnaire.save();
+        // Update questionnaire
+        questionnaire.answers = transformedAnswers;
+        questionnaire.skillScores = skillScores;
+        questionnaire.completed = true;
+        await questionnaire.save();
         try {
             const aiResponse = await axios_1.default.post('https://p.enhc.tech/api/submit-assessment', studentInfo);
             if (!aiResponse.data.task_id) {
                 throw new Error('No task ID received from AI service');
             }
-            // Start polling the task status
+            // Poll task status
             const pollStatus = async (taskId) => {
                 const maxPollAttempts = 120;
                 let attempts = 0;
@@ -134,6 +167,46 @@ router.post('/submit-answers', authMiddleware_1.verifyToken, asyncHandler(async 
         });
     }
 }));
+// Get questionnaire data
+router.get('/get-answers', authMiddleware_1.verifyToken, asyncHandler(async (req, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized: No user ID found' });
+    }
+    try {
+        const user = await User_1.default.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        let questionnaire = await QuestionnaireModel_1.default.findOne({ userId });
+        if (!questionnaire) {
+            // Initialize questionnaire for new user
+            questionnaire = new QuestionnaireModel_1.default({
+                userId,
+                studentName: `${user.firstName} ${user.lastName}`,
+                age: user.age || '',
+                academicInfo: `${user.standard} Grade`,
+                interests: user.interests || '',
+                answers: {},
+                currentQuestion: 0,
+                completed: false
+            });
+            await questionnaire.save();
+        }
+        return res.status(200).json({
+            answers: questionnaire.answers,
+            currentQuestion: questionnaire.currentQuestion,
+            completed: questionnaire.completed
+        });
+    }
+    catch (error) {
+        console.error('Questionnaire fetch error:', error);
+        return res.status(500).json({
+            message: 'Failed to fetch questionnaire',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
 router.get('/report-status', authMiddleware_1.verifyToken, asyncHandler(async (req, res) => {
     const userId = req.user?.userId;
     if (!userId) {
@@ -153,26 +226,6 @@ router.get('/report-status', authMiddleware_1.verifyToken, asyncHandler(async (r
         console.error('Status fetch error:', error);
         return res.status(500).json({
             message: 'Failed to fetch report status',
-            error: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-router.get('/get-answers', authMiddleware_1.verifyToken, asyncHandler(async (req, res) => {
-    const userId = req.user?.userId;
-    if (!userId) {
-        return res.status(401).json({ message: 'Unauthorized: No user ID found' });
-    }
-    try {
-        const questionnaire = await QuestionnaireModel_1.default.findOne({ userId });
-        if (!questionnaire) {
-            return res.status(404).json({ message: 'No questionnaire found for this user' });
-        }
-        return res.status(200).json(questionnaire);
-    }
-    catch (error) {
-        console.error('Questionnaire fetch error:', error);
-        return res.status(500).json({
-            message: 'Failed to fetch questionnaire',
             error: error instanceof Error ? error.message : 'Unknown error'
         });
     }
