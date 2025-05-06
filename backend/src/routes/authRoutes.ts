@@ -15,7 +15,7 @@ const asyncHandler = (fn: (req: Request | AuthRequest, res: Response, next: Next
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 
-// Protected /students endpoint (for original 403 issue)
+// Protected /students endpoint
 router.get('/students', verifyToken, asyncHandler(async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
@@ -29,7 +29,7 @@ router.get('/students', verifyToken, asyncHandler(async (req: AuthRequest, res: 
   }
 }));
 
-// Unprotected /students-test endpoint (for current 404 issue)
+// Unprotected /students-test endpoint
 router.get('/students-test', asyncHandler(async (req: Request, res: Response) => {
   try {
     const students = await User.find({}).select('-password');
@@ -48,6 +48,26 @@ router.get('/questionnaire-data', asyncHandler(async (req: Request, res: Respons
   } catch (error) {
     console.error('Error fetching questionnaire data:', error);
     res.status(500).json({ message: 'Error fetching questionnaire data' });
+  }
+}));
+
+// Endpoint to fetch report status for the logged-in user
+router.get('/report-status', verifyToken, asyncHandler(async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    const user = await User.findById(req.user.userId).select('status reportPath');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({
+      status: user.status,
+      reportPath: user.reportPath || null
+    });
+  } catch (error) {
+    console.error('Error fetching report status:', error);
+    res.status(500).json({ message: 'Error fetching report status' });
   }
 }));
 

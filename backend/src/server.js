@@ -10,6 +10,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const questionnaireRoutes_1 = __importDefault(require("./routes/questionnaireRoutes"));
 const marksRoutes_1 = __importDefault(require("./routes/marksRoutes"));
+const fileRoute_1 = __importDefault(require("./routes/fileRoute"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 mongoose_1.default
@@ -26,6 +27,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes_1.default);
 app.use('/api/questionnaire', questionnaireRoutes_1.default);
 app.use('/api/marks', marksRoutes_1.default);
+app.use('/api/files', fileRoute_1.default);
 app.get('/', (req, res) => {
     res.send('Server is running');
 });

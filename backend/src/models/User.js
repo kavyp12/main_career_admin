@@ -64,13 +64,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 //   return bcrypt.compare(candidatePassword, this.password);
 // };
 // export default mongoose.model<IUser>('User', userSchema);
-// User.ts - Updated model
 const mongoose_1 = __importDefault(require("mongoose"));
-const bcryptjs_1 = __importDefault(require("bcryptjs")); // Use bcryptjs consistently
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const userSchema = new mongoose_1.default.Schema({
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true }, // Added lowercase
+    email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
     phoneNumber: { type: String, required: true },
     schoolName: { type: String, required: true },
@@ -86,6 +85,10 @@ const userSchema = new mongoose_1.default.Schema({
     },
     reportPath: {
         type: String
+    },
+    reportUploadedAt: {
+        type: Date,
+        default: null
     }
 }, { timestamps: true });
 userSchema.pre('save', async function (next) {

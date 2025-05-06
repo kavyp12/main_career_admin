@@ -29,7 +29,6 @@ const AdminPanel: React.FC = () => {
   const handleLogout = () => {
     setIsPasswordCorrect(false);
     setPassword('');
-    // Add any additional logout logic if needed
   };
 
   if (isPasswordCorrect) {

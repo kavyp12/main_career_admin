@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, BookOpen, Copy } from 'lucide-react';
+import { ChevronDown, ChevronUp, BookOpen, Copy, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Student {
@@ -69,6 +69,8 @@ const StudentTable: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Record<string, 'traits' | 'answers' | 'marks' | 'jsonData'>>({});
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [copiedData, setCopiedData] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<Record<string, File | null>>({});
+  const [uploadStatus, setUploadStatus] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -96,25 +98,81 @@ const StudentTable: React.FC = () => {
     fetchData();
   }, []);
 
-  const handleDownload = async (reportPath: string) => {
+  const handleFileChange = (studentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      setUploadFile(prev => ({ ...prev, [studentId]: files[0] }));
+    }
+  };
+
+  const handleFileUpload = async (studentId: string) => {
+    const file = uploadFile[studentId];
+    if (!file) {
+      setUploadStatus(prev => ({ ...prev, [studentId]: 'Please select a file first' }));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`https://api.enhc.tech/api/auth/download-report/${reportPath}`, {
+      console.log('Token being sent for upload:', token);
+      if (!token) {
+        setUploadStatus(prev => ({ ...prev, [studentId]: 'No token found. Please log in again.' }));
+        return;
+      }
+
+      const response = await fetch(`https://api.enhc.tech/api/files/upload-report/${studentId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to upload file');
+      }
+
+      setUploadStatus(prev => ({ ...prev, [studentId]: 'File uploaded successfully' }));
+      setUploadFile(prev => ({ ...prev, [studentId]: null }));
+
+      // Refresh student data
+      const studentsResponse = await fetch('https://api.enhc.tech/api/auth/students-test', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (studentsResponse.ok) {
+        const updatedStudents: Student[] = await studentsResponse.json();
+        setStudents(students);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload file';
+      setUploadStatus(prev => ({ ...prev, [studentId]: errorMessage }));
+    }
+  };
+
+  const handleDownload = async (path: string, fileName: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://api.enhc.tech/api/files/download/${path}`, { // Fixed the URL
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error('Failed to download report');
+      if (!response.ok) throw new Error('Failed to download file');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = reportPath || 'report.pdf';
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      alert('Failed to download report.');
+      alert('Failed to download file.');
     }
   };
 
@@ -192,12 +250,12 @@ const StudentTable: React.FC = () => {
     </motion.div>
   );
 
-  const renderJsonData = (questionnaire?: QuestionnaireData) => {
-    if (!questionnaire) return null;
+  const renderJsonData = (questionnaire?: QuestionnaireData, reportPath?: string) => {
+    if (!questionnaire && !reportPath) return <p className="text-gray-600">No data available.</p>;
     
     const jsonData = {
-      skillScores: questionnaire.skillScores || {},
-      answers: questionnaire.answers || {}
+      skillScores: questionnaire?.skillScores || {},
+      answers: questionnaire?.answers || {}
     };
     
     const jsonString = JSON.stringify(jsonData, null, 2);
@@ -211,6 +269,13 @@ const StudentTable: React.FC = () => {
     
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-xl shadow-inner">
+        {reportPath && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h5 className="text-md font-semibold text-green-800 mb-2">Uploaded Report</h5>
+            <p className="text-sm text-green-700">File: <span className="font-medium">{reportPath}</span></p>
+          </div>
+        )}
+        
         <div className="flex justify-between items-center mb-4">
           <h4 className="text-lg font-semibold text-indigo-700">JSON Data for Extraction</h4>
           <motion.button
@@ -229,7 +294,7 @@ const StudentTable: React.FC = () => {
         </div>
         
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {questionnaire.skillScores && (
+          {questionnaire?.skillScores && (
             <div className="bg-white p-6 rounded-xl shadow-md">
               <div className="flex justify-between items-center mb-4">
                 <h5 className="text-md font-semibold text-indigo-700">Skill Scores Only</h5>
@@ -253,7 +318,7 @@ const StudentTable: React.FC = () => {
             <div className="flex justify-between items-center mb-4">
               <h5 className="text-md font-semibold text-indigo-700">Answers Only</h5>
               <motion.button
-                onClick={() => copyToClipboard(JSON.stringify(questionnaire.answers, null, 2), 'answers')}
+                onClick={() => copyToClipboard(JSON.stringify(questionnaire?.answers, null, 2), 'answers')}
                 className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -263,7 +328,7 @@ const StudentTable: React.FC = () => {
               </motion.button>
             </div>
             <div className="bg-gray-800 text-white p-3 rounded-lg overflow-auto max-h-40">
-              <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(questionnaire.answers, null, 2)}</pre>
+              <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(questionnaire?.answers, null, 2)}</pre>
             </div>
           </div>
         </div>
@@ -351,7 +416,7 @@ const StudentTable: React.FC = () => {
         <motion.select
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-          className="px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+          className="px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           whileHover={{ scale: 1.02 }}
         >
           <option value="newest">Newest First</option>
@@ -407,41 +472,51 @@ const StudentTable: React.FC = () => {
                     <div className="text-sm text-gray-900">{student.age}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap" style={{ width: columnWidths[5] }}>
-                    <span className={`px-3 py-1 inline-flex text-xs font-semibold rounded-full ${getStatusColor(student.status)} ring-1 ring-inset`}>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(student.status)}`}>
                       {student.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" style={{ width: columnWidths[6] }}>
-                    <div className="flex items-center space-x-3">
-                      {student.status === 'Report Generated' && student.reportPath && (
-                        <motion.button 
-                          onClick={() => handleDownload(student.reportPath!)} 
-                          className="text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                        >
-                          Download
-                        </motion.button>
-                      )}
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" style={{ width: columnWidths[6] }}>
+                    <div className="flex items-center gap-3">
                       {hasData && (
-                        <motion.button 
-                          onClick={() => toggleRowExpansion(student._id)} 
-                          className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors"
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
+                        <motion.button
+                          onClick={() => toggleRowExpansion(student._id)}
+                          className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                         >
-                          {isExpanded ? (
-                            <>
-                              <ChevronUp className="h-5 w-5 mr-1" /> Hide Details
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-5 w-5 mr-1" /> View Details
-                            </>
-                          )}
+                          <BookOpen className="h-5 w-5" />
                         </motion.button>
                       )}
+                      <div className="flex items-center">
+                        <input
+                          type="file"
+                          id={`file-upload-${student._id}`}
+                          onChange={(e) => handleFileChange(student._id, e)}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor={`file-upload-${student._id}`}
+                          className="cursor-pointer inline-flex items-center px-3 py-1 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload
+                        </label>
+                        {uploadFile[student._id] && (
+                          <button
+                            onClick={() => handleFileUpload(student._id)}
+                            className="ml-2 inline-flex items-center px-3 py-1 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+                          >
+                            Submit
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {uploadStatus[student._id] && (
+                      <p className={`mt-2 text-sm ${uploadStatus[student._id].includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>
+                        {uploadStatus[student._id]}
+                      </p>
+                    )}
                   </td>
                 </motion.tr>
                 <AnimatePresence>
@@ -451,80 +526,68 @@ const StudentTable: React.FC = () => {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
+                      className="bg-gray-50"
                     >
-                      <td colSpan={7} className="px-6 py-6 bg-gray-50">
-                        <div className="border rounded-xl p-6 bg-white shadow-lg">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                            {questionnaire && (
-                              <>
-                                <div><h4 className="text-sm font-medium text-gray-500">Student Name</h4><p className="text-sm text-gray-900">{questionnaire.studentName}</p></div>
-                                <div><h4 className="text-sm font-medium text-gray-500">Age</h4><p className="text-sm text-gray-900">{questionnaire.age}</p></div>
-                                <div><h4 className="text-sm font-medium text-gray-500">Academic Info</h4><p className="text-sm text-gray-900">{questionnaire.academicInfo}</p></div>
-                                <div><h4 className="text-sm font-medium text-gray-500">Interests</h4><p className="text-sm text-gray-900">{questionnaire.interests}</p></div>
-                                <div><h4 className="text-sm font-medium text-gray-500">Submission Date</h4><p className="text-sm text-gray-900">{new Date(questionnaire.createdAt).toLocaleDateString()}</p></div>
-                              </>
+                      <td colSpan={7} className="p-0">
+                        <div className="border-t border-gray-200 p-6">
+                          <div className="flex border-b border-gray-200 mb-6">
+                            {questionnaire?.skillScores && (
+                              <button
+                                onClick={() => handleTabChange(student._id, 'traits')}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                                  currentTab === 'traits'
+                                    ? 'border-indigo-500 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-500'
+                                } transition-colors`}
+                              >
+                                Traits
+                              </button>
+                            )}
+                            {questionnaire?.answers && (
+                              <button
+                                onClick={() => handleTabChange(student._id, 'answers')}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                                  currentTab === 'answers'
+                                    ? 'border-indigo-500 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-500'
+                                } transition-colors`}
+                              >
+                                Answers
+                              </button>
+                            )}
+                            {marksList.length > 0 && (
+                              <button
+                                onClick={() => handleTabChange(student._id, 'marks')}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                                  currentTab === 'marks'
+                                    ? 'border-indigo-500 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-500'
+                                } transition-colors`}
+                              >
+                                Marks
+                              </button>
+                            )}
+                            {(questionnaire?.skillScores || questionnaire?.answers) && (
+                              <button
+                                onClick={() => handleTabChange(student._id, 'jsonData')}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                                  currentTab === 'jsonData'
+                                    ? 'border-indigo-500 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-500'
+                                } transition-colors`}
+                              >
+                                JSON Data
+                              </button>
                             )}
                           </div>
-                          <div className="border-b border-gray-200 mb-6">
-                            <nav className="flex space-x-4 flex-wrap" aria-label="Tabs">
-                              {questionnaire && (
-                                <motion.button
-                                  onClick={() => handleTabChange(student._id, 'jsonData')}
-                                  className={`px-4 py-2 font-semibold text-sm rounded-lg flex items-center ${currentTab === 'jsonData' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-indigo-600 bg-gray-100'}`}
-                                  whileHover={{ scale: 1.05 }}
-                                  whileTap={{ scale: 0.95 }}
-                                >
-                                  JSON Data
-                                </motion.button>
-                              )}
-                              {questionnaire && questionnaire.skillScores && (
-                                <motion.button
-                                  onClick={() => handleTabChange(student._id, 'traits')}
-                                  className={`px-4 py-2 font-semibold text-sm rounded-lg ${currentTab === 'traits' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-indigo-600 bg-gray-100'}`}
-                                  whileHover={{ scale: 1.05 }}
-                                  whileTap={{ scale: 0.95 }}
-                                >
-                                  Trait Scores
-                                </motion.button>
-                              )}
-                              {questionnaire && (
-                                <motion.button
-                                  onClick={() => handleTabChange(student._id, 'answers')}
-                                  className={`px-4 py-2 font-semibold text-sm rounded-lg ${currentTab === 'answers' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-indigo-600 bg-gray-100'}`}
-                                  whileHover={{ scale: 1.05 }}
-                                  whileTap={{ scale: 0.95 }}
-                                >
-                                  Question Answers
-                                </motion.button>
-                              )}
-                              {marksList.length > 0 && (
-                                <motion.button
-                                  onClick={() => handleTabChange(student._id, 'marks')}
-                                  className={`px-4 py-2 font-semibold text-sm rounded-lg flex items-center ${currentTab === 'marks' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-indigo-600 bg-gray-100'}`}
-                                  whileHover={{ scale: 1.05 }}
-                                  whileTap={{ scale: 0.95 }}
-                                >
-                                  <BookOpen className="h-5 w-5 mr-2" />
-                                  Academic Marks ({marksList.length})
-                                </motion.button>
-                              )}
-                            </nav>
-                          </div>
-                          {currentTab === 'jsonData' && questionnaire && renderJsonData(questionnaire)}
-                          {currentTab === 'traits' && questionnaire && questionnaire.skillScores && renderSkillScores(questionnaire.skillScores)}
-                          {currentTab === 'answers' && questionnaire && renderAnswers(questionnaire.answers)}
-                          {currentTab === 'marks' && marksList.length > 0 && (
-                            <div className="space-y-6">
-                              {marksList
-                                .sort((a, b) => a.standard - b.standard)
-                                .map((mark) => renderMarks(mark))}
+                          {currentTab === 'traits' && questionnaire?.skillScores && renderSkillScores(questionnaire.skillScores)}
+                          {currentTab === 'answers' && questionnaire?.answers && renderAnswers(questionnaire.answers)}
+                          {currentTab === 'marks' && marksList.map((marks) => (
+                            <div key={marks._id} className="mb-4">
+                              {renderMarks(marks)}
                             </div>
-                          )}
-                          {currentTab === 'marks' && marksList.length === 0 && (
-                            <div className="bg-gray-50 p-6 rounded-xl">
-                              <p className="text-sm text-gray-600">No marks recorded for this student.</p>
-                            </div>
-                          )}
+                          ))}
+                          {currentTab === 'jsonData' && renderJsonData(questionnaire, student.reportPath)}
                         </div>
                       </td>
                     </motion.tr>

@@ -73,9 +73,8 @@
 // export default mongoose.model<IUser>('User', userSchema);
 
 
-// User.ts - Updated model
 import mongoose, { Document } from 'mongoose';
-import bcrypt from 'bcryptjs';  // Use bcryptjs consistently
+import bcrypt from 'bcryptjs';
 
 export interface IUser extends Document {
   firstName: string;
@@ -92,6 +91,7 @@ export interface IUser extends Document {
   academicInfo: string;
   status: 'Pending' | 'Analyzing' | 'Report Generated' | 'Error';
   reportPath?: string;
+  reportUploadedAt?: Date; // New field for upload timestamp
   isAdmin: boolean;
   role?: string;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -100,7 +100,7 @@ export interface IUser extends Document {
 const userSchema = new mongoose.Schema<IUser>({
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
-  email: { type: String, required: true, unique: true, lowercase: true },  // Added lowercase
+  email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },
   phoneNumber: { type: String, required: true },
   schoolName: { type: String, required: true },
@@ -116,6 +116,10 @@ const userSchema = new mongoose.Schema<IUser>({
   },
   reportPath: { 
     type: String 
+  },
+  reportUploadedAt: { // New field
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

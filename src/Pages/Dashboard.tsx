@@ -1,37 +1,63 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, Download } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [status, setStatus] = useState('Pending');
   const [reportPath, setReportPath] = useState<string | null>(null);
 
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+      };
+
+      // Fetch report status
+      const reportResponse = await fetch('https://api.enhc.tech/api/auth/report-status', { headers });
+      if (!reportResponse.ok) throw new Error('Failed to fetch status');
+      const reportData = await reportResponse.json();
+      setStatus(reportData.status);
+      setReportPath(reportData.reportPath);
+    } catch (error) {
+      console.error('Error:', error);
+      setStatus('Error');
+    }
+  };
+
   useEffect(() => {
-    const fetchReportStatus = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('/api/questionnaire/report-status', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) throw new Error('Failed to fetch status');
-
-        const data = await response.json();
-        setStatus(data.status);
-        setReportPath(data.reportPath);
-      } catch (error) {
-        console.error('Error checking report status:', error);
-        setStatus('Error');
-      }
-    };
-
-    fetchReportStatus();
+    fetchData(); // Initial fetch
+    const interval = setInterval(fetchData, 10000); // Poll every 10 seconds
+    return () => clearInterval(interval); // Cleanup on unmount
   }, []);
 
-  const isReportAvailable = status === 'Report Generated';
+  const handleDownload = async () => {
+    if (!reportPath) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://api.enhc.tech/api/files/download/${reportPath}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to download file');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${user?.firstName}_report.pdf`; // Customize the filename
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download report.');
+    }
+  };
+
+  const isReportUploaded = reportPath !== null;
+  const showWaitMessage = status === 'Analyzing' && !isReportUploaded;
 
   return (
     <div className="min-h-screen bg-gray-100" style={{ height: '100vh', width: '100vw' }}>
@@ -68,7 +94,7 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center">
                   <span
                     className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300 transform hover:scale-105 ${
-                      isReportAvailable
+                      isReportUploaded
                         ? 'bg-green-500 text-white'
                         : status === 'Analyzing'
                         ? 'bg-yellow-500 text-white'
@@ -77,7 +103,7 @@ const Dashboard: React.FC = () => {
                         : 'bg-gray-500 text-white'
                     }`}
                   >
-                    {isReportAvailable ? (
+                    {isReportUploaded ? (
                       <>
                         <CheckCircle className="h-5 w-5 mr-2" />
                         Report Ready
@@ -142,16 +168,37 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
 
-              {isReportAvailable && (
+              {showWaitMessage && (
+                <div className="w-full p-6 bg-yellow-50 border border-yellow-200 rounded-xl mb-4">
+                  <div className="flex items-start">
+                    <AlertCircle className="h-6 w-6 text-yellow-600 mr-3 flex-shrink-0 mt-1" />
+                    <div>
+                      <h4 className="text-lg font-semibold text-yellow-800 mb-1">Your assessment is being processed!</h4>
+                      <p className="text-yellow-700">
+                        Your comprehensive career assessment report will be available within the next 24 hours. 
+                        Please check back later.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isReportUploaded && (
                 <div className="w-full p-6 bg-green-50 border border-green-200 rounded-xl mb-4">
                   <div className="flex items-start">
                     <CheckCircle className="h-6 w-6 text-green-600 mr-3 flex-shrink-0 mt-1" />
                     <div>
-                      <h4 className="text-lg font-semibold text-green-800 mb-1">Your report has been generated!</h4>
-                      <p className="text-green-700">
-                        We'll be sending your comprehensive career assessment report to your registered email address shortly. 
-                        Please check your inbox within the next 24 hours.
+                      <h4 className="text-lg font-semibold text-green-800 mb-1">Your report is ready!</h4>
+                      <p className="text-green-700 mb-3">
+                        Your comprehensive career assessment report is available for download.
                       </p>
+                      <button
+                        onClick={handleDownload}
+                        className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                      >
+                        <Download className="h-5 w-5 mr-2" />
+                        Download Report
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -160,7 +207,7 @@ const Dashboard: React.FC = () => {
               <div className="bg-indigo-50 rounded-xl p-6">
                 <h4 className="text-lg font-semibold text-indigo-900 mb-2">Next Steps</h4>
                 <ul className="space-y-3">
-                  {!isReportAvailable && (
+                  {!isReportUploaded && (
                     <li className="flex items-start">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-indigo-200 flex items-center justify-center">
                         <span className="text-indigo-600 text-sm font-medium">1</span>
@@ -175,19 +222,19 @@ const Dashboard: React.FC = () => {
                   <li className="flex items-start">
                     <div className="flex-shrink-0 h-6 w-6 rounded-full bg-indigo-200 flex items-center justify-center">
                       <span className="text-indigo-600 text-sm font-medium">
-                        {isReportAvailable ? '1' : '2'}
+                        {isReportUploaded ? '1' : '2'}
                       </span>
                     </div>
                     <p className="ml-3 text-sm text-indigo-800">
-                      {isReportAvailable
-                        ? 'Check your email for your career assessment report'
-                        : 'Once your report is ready, it will be sent to your registered email address'}
+                      {isReportUploaded
+                        ? 'Download your career assessment report'
+                        : 'Check back in 24 hours for your career assessment report'}
                     </p>
                   </li>
                   <li className="flex items-start">
                     <div className="flex-shrink-0 h-6 w-6 rounded-full bg-indigo-200 flex items-center justify-center">
                       <span className="text-indigo-600 text-sm font-medium">
-                        {isReportAvailable ? '2' : '3'}
+                        {isReportUploaded ? '2' : '3'}
                       </span>
                     </div>
                     <p className="ml-3 text-sm text-indigo-800">
