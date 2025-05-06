@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, BookOpen, Copy, Upload } from 'lucide-react';
+import { BookOpen, Copy, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Student {
@@ -112,16 +112,18 @@ const StudentTable: React.FC = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
       const token = localStorage.getItem('token');
-      console.log('Token being sent for upload:', token);
       if (!token) {
         setUploadStatus(prev => ({ ...prev, [studentId]: 'No token found. Please log in again.' }));
         return;
       }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      console.log('Uploading file for userId:', studentId);
+      console.log('Token:', token);
 
       const response = await fetch(`https://api.enhc.tech/api/files/upload-report/${studentId}`, {
         method: 'POST',
@@ -131,11 +133,23 @@ const StudentTable: React.FC = () => {
         body: formData,
       });
 
+      const text = await response.text();
+      console.log('Raw response:', text);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to upload file');
+        let errorData;
+        try {
+          errorData = JSON.parse(text);
+        } catch {
+          errorData = { message: 'Non-JSON response received', raw: text };
+        }
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
+      const data = JSON.parse(text);
+      console.log('Upload successful:', data);
       setUploadStatus(prev => ({ ...prev, [studentId]: 'File uploaded successfully' }));
       setUploadFile(prev => ({ ...prev, [studentId]: null }));
 
@@ -145,7 +159,7 @@ const StudentTable: React.FC = () => {
       });
       if (studentsResponse.ok) {
         const updatedStudents: Student[] = await studentsResponse.json();
-        setStudents(students);
+        setStudents(updatedStudents);
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -154,27 +168,6 @@ const StudentTable: React.FC = () => {
     }
   };
 
-  const handleDownload = async (path: string, fileName: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`https://api.enhc.tech/api/files/download/${path}`, { // Fixed the URL
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Failed to download file');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      alert('Failed to download file.');
-    }
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
