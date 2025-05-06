@@ -72,7 +72,6 @@
 
 // export default mongoose.model<IUser>('User', userSchema);
 
-
 import mongoose, { Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
