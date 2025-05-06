@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import questionnaireRoutes from './routes/questionnaireRoutes';
 import marksRoutes from './routes/marksRoutes';
-import fileRoute from './routes/fileRoute';
 
 dotenv.config();
 
@@ -28,7 +27,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/questionnaire', questionnaireRoutes);
 app.use('/api/marks', marksRoutes);
-app.use('/api/files', fileRoute);
 
 app.get('/', (req, res) => {
   res.send('Server is running');
